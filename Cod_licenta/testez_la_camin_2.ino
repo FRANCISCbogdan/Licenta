@@ -1,4 +1,4 @@
-#define PWMA 3
+#define PWMA 6
 #define AIN2 8
 #define AIN1 9
 #define STBY 10
@@ -9,10 +9,11 @@ const int SENSOR_PINS[] = {A0, A1, A2, A3, A4, A5, A6, A7};
 #define NUM_SENSORS 8
 #define IR_ENABLE_PIN 7
 
-unsigned int threshold = 750;
-float Kp = 0.07;
-int base_speed = 130;
-int max_speed = 220;
+unsigned int threshold = 900;
+float Kp = 0.04;
+float Kd = 0.15;
+int base_speed = 50;
+int max_speed = 60;
 
 unsigned int sensor_values[NUM_SENSORS];
 int last_error = 0;
@@ -29,6 +30,8 @@ void setup() {
   pinMode(IR_ENABLE_PIN, OUTPUT);
   digitalWrite(IR_ENABLE_PIN, HIGH);
   delay(1000);
+
+  randomSeed(analogRead(A0));  
 }
 
 void loop() {
@@ -36,29 +39,45 @@ void loop() {
 
   if (has_found_special_finish()) {
     stop_motors();
-    while (true); 
+    while (true);
+  }
+
+  if (has_found_intersection()) {
+    int decision = random(2);  
+
+    if (decision == 1) {
+      int dir = random(2);  
+      if (dir == 0) {
+        turn_left_briefly();
+      } else {
+        turn_right_briefly();
+      }
+    }
+    
   }
 
   long position = calculate_position();
   int error;
 
-  if (position == -1) { 
+  if (position == -1) {
     error = last_error;
   } else {
     error = position - 3500;
     last_error = error;
   }
 
-  int motor_adjustment = Kp * error;
+  int derivative = error - last_error;
+  int motor_adjustment = Kp * error + Kd * derivative;
+
   int left_speed = base_speed - motor_adjustment;
   int right_speed = base_speed + motor_adjustment;
 
-  left_speed = constrain(left_speed, -max_speed, max_speed);
-  right_speed = constrain(right_speed, -max_speed, max_speed);
+
+  left_speed = constrain(left_speed, 0, max_speed);
+  right_speed = constrain(right_speed, 0, max_speed);
 
   set_motors(left_speed, right_speed);
 }
-
 
 void read_sensors() {
   for (int i = 0; i < NUM_SENSORS; i++) {
@@ -78,7 +97,17 @@ bool has_found_special_finish() {
   return outer_sensors_black && inner_sensors_white;
 }
 
-long calculate_position() { 
+bool has_found_intersection() {
+  int black_sensors = 0;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    if (sensor_values[i] > threshold) {
+      black_sensors++;
+    }
+  }
+  return black_sensors >= 5;
+}
+
+long calculate_position() {
   long sum = 0;
   long weighted_sum = 0;
   int sensors_on_line = 0;
@@ -99,6 +128,7 @@ long calculate_position() {
 }
 
 void set_motors(int left_speed, int right_speed) {
+  
   if (left_speed >= 0) {
     digitalWrite(AIN1, HIGH);
     digitalWrite(AIN2, LOW);
@@ -108,6 +138,7 @@ void set_motors(int left_speed, int right_speed) {
   }
   analogWrite(PWMA, abs(left_speed));
 
+  
   if (right_speed >= 0) {
     digitalWrite(BIN1, HIGH);
     digitalWrite(BIN2, LOW);
@@ -127,4 +158,12 @@ void stop_motors() {
   analogWrite(PWMB, 0);
 }
 
+void turn_left_briefly() {
+  set_motors(-base_speed, base_speed); 
+  delay(300);
+}
 
+void turn_right_briefly() {
+  set_motors(base_speed, -base_speed);
+  delay(300);
+}
